@@ -1,0 +1,60 @@
+{
+  "$schema": "https://raw.githubusercontent.com/z10-labs/deploy-monitor/main/plugins/deploy-monitor/schema/deploy-monitor.schema.json",
+  "name": "my-service",
+  "description": "One sentence about the stack, e.g. a Fastify API on Node 22 deployed as one Vercel project.",
+  "repository": "my-org/my-service",
+  "defaultBranch": "main",
+  "platform": "vercel",
+  "platformScope": { "teamId": "team_xxxxxxxxxxxxxxxxxxxxxxxx" },
+  "deploy": { "waitMinutesAfterMerge": 4, "retryMinutes": 3 },
+  "targets": [
+    {
+      "name": "my-service",
+      "url": "https://my-service.vercel.app",
+      "secondaryUrls": ["https://api.example.com"],
+      "notes": "The custom domain is informational until the primary also fails.",
+      "projectId": "prj_xxxxxxxxxxxxxxxxxxxxxxxx",
+      "probes": [
+        { "path": "/health", "expect": [200], "bodyContains": "\"status\":\"ok\"" },
+        { "path": "/admin", "expect": [401, 403], "meaning": "no credentials were sent, so the guard rejecting us proves the process booted" }
+      ],
+      "bootRepro": "NODE_ENV=production timeout 30 node dist/main.js"
+    }
+  ],
+  "build": {
+    "install": "pnpm install --frozen-lockfile",
+    "build": "pnpm build",
+    "typecheck": "pnpm typecheck",
+    "test": "pnpm vitest run"
+  },
+  "ci": { "workflow": "CI" },
+  "contract": { "path": "openapi.json", "consumer": "my-web" },
+  "repoRules": "Never merge; never push to `main`; never edit files under `packages/shared` without a decision record.",
+  "knownFailureModes": [
+    "A required environment variable missing in production makes the boot-time config check throw before the server listens."
+  ],
+  "runbookLinks": ["docs/runbook.md"],
+  "escalation": {
+    "assignees": [],
+    "labels": ["deploy-monitor", "bug"],
+    "mentionAuthor": true,
+    "pushNotification": true,
+    "successComment": true
+  },
+  "fixPr": {
+    "enabled": true,
+    "maxFiles": 3,
+    "maxLines": 60,
+    "forbiddenPaths": ["packages/shared"],
+    "branchPrefix": "claude/deploy-monitor",
+    "bodySections": ["Summary", "Root cause", "Verification"],
+    "coAuthor": "Claude Fable 5.1 <noreply@anthropic.com>"
+  },
+  "routine": {
+    "name": "my-service deploy monitor",
+    "model": "claude-sonnet-5-5",
+    "cron": "0 5 * * *",
+    "environmentId": "",
+    "connectors": []
+  }
+}

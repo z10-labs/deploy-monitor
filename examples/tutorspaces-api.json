@@ -1,0 +1,75 @@
+{
+  "$schema": "https://raw.githubusercontent.com/z10-labs/deploy-monitor/main/plugins/deploy-monitor/schema/deploy-monitor.schema.json",
+  "name": "tutorspaces-api",
+  "description": "A NestJS 11 modular monolith, pnpm workspace, Node 24; two Vercel projects deploy from this one repo.",
+  "repository": "Dzithendo31/tutorspaces-api",
+  "defaultBranch": "main",
+  "platform": "vercel",
+  "platformScope": { "teamId": "team_xYfve1tIZeqcx8XWepKpfbll" },
+  "deploy": { "waitMinutesAfterMerge": 4, "retryMinutes": 3 },
+  "targets": [
+    {
+      "name": "tutorspaces-api",
+      "url": "https://tutorspaces-api.vercel.app",
+      "secondaryUrls": ["https://api.tutorspaces.app"],
+      "notes": "Root apps/api. The custom domain may not be attached yet.",
+      "projectId": "prj_K8Ztwe6APkOJNRFPQMVPXVBry7DG",
+      "probes": [
+        { "path": "/health", "expect": [200], "bodyContains": "\"service\":\"tutorspaces-api\"" },
+        { "path": "/openapi.json", "expect": [200] }
+      ],
+      "bootRepro": "cd apps/api && VERCEL_ENV=production timeout 30 node dist/main.js"
+    },
+    {
+      "name": "tutorspaces-worker",
+      "url": "https://tutorspaces-worker.vercel.app",
+      "notes": "Root apps/worker. No custom domain.",
+      "projectId": "prj_bkJsiblwYFqmLZ1XOrjJWAutHKNw",
+      "probes": [
+        { "path": "/internal/drain", "method": "POST", "expect": [401, 403], "meaning": "no secret header was sent, so the guard rejecting us proves the function booted" },
+        { "path": "/", "expect": [200, 401, 403, 404] }
+      ],
+      "bootRepro": "cd apps/worker && VERCEL_ENV=production timeout 30 node dist/main.js"
+    }
+  ],
+  "build": {
+    "install": "pnpm install --frozen-lockfile",
+    "build": "pnpm turbo run build --filter=@tutorspaces/api --filter=@tutorspaces/worker",
+    "typecheck": "pnpm typecheck",
+    "test": "pnpm vitest run"
+  },
+  "ci": { "workflow": "CI" },
+  "contract": { "path": "contract/openapi.json", "consumer": "tutorspaces-web" },
+  "repoRules": "Never merge, never push to `main` or `phase/**`, never touch `packages/kernel`, `packages/contracts` or `packages/persistence/schema`, never commit `.env` files.",
+  "knownFailureModes": [
+    "The production env fail-fast in `apps/api/src/production-env.ts` and `apps/worker/src/production-env.ts` refuses to boot when `VERCEL_ENV=production` and a required variable is missing or malformed; it prints names only.",
+    "A module that crashes at import on Vercel (PR #37: `@react-pdf/renderer` needed a dynamic import)."
+  ],
+  "runbookLinks": [
+    "../tutorspacebrain/02-roadmap/rw-phase-07-cutover/runbook.md",
+    "../tutorspacebrain/02-roadmap/rw-phase-07-cutover/env-inventory.md"
+  ],
+  "escalation": {
+    "assignees": ["Dzithendo31"],
+    "labels": ["deploy-monitor", "bug"],
+    "mentionAuthor": true,
+    "pushNotification": true,
+    "successComment": true
+  },
+  "fixPr": {
+    "enabled": true,
+    "maxFiles": 3,
+    "maxLines": 60,
+    "forbiddenPaths": ["packages/kernel", "packages/contracts", "packages/persistence/schema"],
+    "branchPrefix": "claude/deploy-monitor",
+    "bodySections": ["Events published / consumed", "Tables written", "Deviations from the context doc", "Decisions filed", "Reviewer outputs: pending"],
+    "coAuthor": "Claude Fable 5.1 <noreply@anthropic.com>"
+  },
+  "routine": {
+    "name": "TutorSpaces deploy monitor (api + worker)",
+    "model": "claude-sonnet-5-5",
+    "cron": "0 5 * * *",
+    "environmentId": "env_01QFiuVMFKeqwrzTcUTyMmDN",
+    "connectors": []
+  }
+}
