@@ -1,0 +1,14 @@
+{
+  "name": "@z10-labs/deploy-monitor",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Claude Code plugin marketplace: a deploy-verification routine that traces production failures back to the PR, raises them with the developer, and opens guarded draft fix PRs",
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "test": "node --test plugins/deploy-monitor/scripts/",
+    "validate": "claude plugin validate . && claude plugin validate ./plugins/deploy-monitor",
+    "render:example": "node plugins/deploy-monitor/scripts/render.mjs render examples/acme-api.json"
+  },
+  "license": "MIT"
+}

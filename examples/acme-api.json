@@ -1,0 +1,75 @@
+{
+  "$schema": "https://raw.githubusercontent.com/z10-labs/deploy-monitor/main/plugins/deploy-monitor/schema/deploy-monitor.schema.json",
+  "name": "acme-api",
+  "description": "A Node.js monorepo, pnpm workspace, Node 24; two Vercel projects deploy from this one repo.",
+  "repository": "acme/acme-api",
+  "defaultBranch": "main",
+  "platform": "vercel",
+  "platformScope": { "teamId": "team_xxxxxxxxxxxxxxxxxxxxxxxx" },
+  "deploy": { "waitMinutesAfterMerge": 4, "retryMinutes": 3 },
+  "targets": [
+    {
+      "name": "acme-api",
+      "url": "https://acme-api.vercel.app",
+      "secondaryUrls": ["https://api.acme.example"],
+      "notes": "Root apps/api. The custom domain may not be attached yet.",
+      "projectId": "prj_api00000000000000000000000",
+      "probes": [
+        { "path": "/health", "expect": [200], "bodyContains": "\"service\":\"acme-api\"" },
+        { "path": "/openapi.json", "expect": [200] }
+      ],
+      "bootRepro": "cd apps/api && VERCEL_ENV=production timeout 30 node dist/main.js"
+    },
+    {
+      "name": "acme-worker",
+      "url": "https://acme-worker.vercel.app",
+      "notes": "Root apps/worker. No custom domain.",
+      "projectId": "prj_worker000000000000000000000",
+      "probes": [
+        { "path": "/internal/jobs", "method": "POST", "expect": [401, 403], "meaning": "no secret header was sent, so the guard rejecting us proves the function booted" },
+        { "path": "/", "expect": [200, 401, 403, 404] }
+      ],
+      "bootRepro": "cd apps/worker && VERCEL_ENV=production timeout 30 node dist/main.js"
+    }
+  ],
+  "build": {
+    "install": "pnpm install --frozen-lockfile",
+    "build": "pnpm turbo run build --filter=@acme/api --filter=@acme/worker",
+    "typecheck": "pnpm typecheck",
+    "test": "pnpm vitest run"
+  },
+  "ci": { "workflow": "CI" },
+  "contract": { "path": "contract/openapi.json", "consumer": "acme-web" },
+  "repoRules": "Never merge, never push to `main` or `release/**`, never touch `packages/core`, `packages/contracts` or `packages/db/schema`, never commit `.env` files.",
+  "knownFailureModes": [
+    "The production env fail-fast in `apps/api/src/production-env.ts` and `apps/worker/src/production-env.ts` refuses to boot when `VERCEL_ENV=production` and a required variable is missing or malformed; it prints names only.",
+    "A module that crashes at import on Vercel (PR #12: a PDF library needed a dynamic import)."
+  ],
+  "runbookLinks": [
+    "docs/runbooks/deploy.md",
+    "docs/runbooks/env-inventory.md"
+  ],
+  "escalation": {
+    "assignees": ["octocat"],
+    "labels": ["deploy-monitor", "bug"],
+    "mentionAuthor": true,
+    "pushNotification": true,
+    "successComment": true
+  },
+  "fixPr": {
+    "enabled": true,
+    "maxFiles": 3,
+    "maxLines": 60,
+    "forbiddenPaths": ["packages/core", "packages/contracts", "packages/db/schema"],
+    "branchPrefix": "claude/deploy-monitor",
+    "bodySections": ["Rollback plan", "Data changes", "Risks", "Decisions", "Test plan"],
+    "coAuthor": "Claude Fable 5.1 <noreply@anthropic.com>"
+  },
+  "routine": {
+    "name": "Acme deploy monitor (api + worker)",
+    "model": "claude-sonnet-5-5",
+    "cron": "0 5 * * *",
+    "environmentId": "env_01EXAMPLEENVIRONMENT0000",
+    "connectors": []
+  }
+}

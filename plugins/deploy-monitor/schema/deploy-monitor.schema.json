@@ -1,0 +1,141 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/z10-labs/deploy-monitor/main/plugins/deploy-monitor/schema/deploy-monitor.schema.json",
+  "title": "deploy-monitor config",
+  "description": "Per-repository configuration for the deploy-monitor routine. Lives at .claude/deploy-monitor.json in the monitored repository.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "repository", "targets"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "name": { "type": "string", "description": "Short name of the service, used in titles and markers." },
+    "description": { "type": "string", "description": "One sentence about the stack, shown to the agent." },
+    "repository": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$", "description": "GitHub owner/repo." },
+    "defaultBranch": { "type": "string", "default": "main" },
+    "platform": {
+      "type": "string",
+      "enum": ["vercel", "fly", "aws-lambda", "generic"],
+      "default": "generic",
+      "description": "Picks the platform profile: which response headers mean a crash, which CLI reads build and runtime logs, which env var holds the token."
+    },
+    "platformScope": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Platform-specific identifiers the log commands need (never secrets).",
+      "properties": {
+        "teamId": { "type": "string", "description": "Vercel team scope (team_...)." },
+        "region": { "type": "string", "description": "AWS region for Lambda / CloudWatch." },
+        "org": { "type": "string", "description": "Fly organisation." }
+      }
+    },
+    "deployModel": { "type": "string", "description": "One sentence: how a commit becomes a production deployment. Default is derived from platform and defaultBranch." },
+    "deploy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "waitMinutesAfterMerge": { "type": "integer", "minimum": 0, "default": 4, "description": "How long a build takes; the merge-triggered run waits this long before the first probe." },
+        "retryMinutes": { "type": "integer", "minimum": 0, "default": 3, "description": "Re-probe delay before a failure is declared." }
+      }
+    },
+    "targets": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "url", "probes"],
+        "properties": {
+          "name": { "type": "string" },
+          "url": { "type": "string", "format": "uri", "description": "Primary production URL. A failure here is a real failure." },
+          "secondaryUrls": { "type": "array", "items": { "type": "string", "format": "uri" }, "description": "Custom domains etc. Informational until the primary also fails." },
+          "notes": { "type": "string" },
+          "projectId": { "type": "string", "description": "Platform project id (Vercel prj_..., Fly app name, Lambda function name)." },
+          "probes": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["path", "expect"],
+              "properties": {
+                "path": { "type": "string" },
+                "method": { "type": "string", "enum": ["GET", "POST", "HEAD", "PUT", "DELETE"], "default": "GET" },
+                "headers": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Non-secret headers only." },
+                "expect": { "type": "array", "minItems": 1, "items": { "type": "integer", "minimum": 100, "maximum": 599 } },
+                "bodyContains": { "type": "string" },
+                "meaning": { "type": "string", "description": "Why this status proves health, e.g. 'the guard rejected us, so the function booted'." }
+              }
+            }
+          },
+          "bootRepro": { "type": "string", "description": "Shell command that boots the target locally in production mode so a fail-fast names what is missing (names only)." }
+        }
+      }
+    },
+    "build": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "install": { "type": "string" },
+        "build": { "type": "string" },
+        "typecheck": { "type": "string" },
+        "test": { "type": "string", "description": "Command prefix; the agent appends changed test paths." }
+      }
+    },
+    "ci": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": { "workflow": { "type": "string", "description": "Name of the GitHub Actions workflow that must be green on the default branch." } }
+    },
+    "contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path"],
+      "properties": {
+        "path": { "type": "string", "description": "Committed API contract (OpenAPI etc.) to diff between deploys." },
+        "consumer": { "type": "string", "description": "Who breaks when it changes, e.g. the web repo." }
+      }
+    },
+    "repoRules": { "type": "string", "description": "Rules from the repo's CLAUDE.md the agent must obey, in one or two sentences." },
+    "knownFailureModes": { "type": "array", "items": { "type": "string" }, "description": "Repo-specific causes seen before, one line each; the classifier checks them first." },
+    "runbookLinks": { "type": "array", "items": { "type": "string" }, "description": "Paths or URLs the suggested fix should point to." },
+    "escalation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "assignees": { "type": "array", "items": { "type": "string" }, "description": "GitHub logins to assign issues to. Empty = the PR author." },
+        "labels": { "type": "array", "items": { "type": "string" }, "default": ["deploy-monitor", "bug"] },
+        "mentionAuthor": { "type": "boolean", "default": true },
+        "pushNotification": { "type": "boolean", "default": true, "description": "Send a mobile push from the routine on failure (cloud routines only)." },
+        "successComment": { "type": "boolean", "default": true, "description": "Post a short verified comment on the PR after a healthy merge-triggered run." }
+      }
+    },
+    "fixPr": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean", "default": true },
+        "maxFiles": { "type": "integer", "minimum": 1, "default": 3 },
+        "maxLines": { "type": "integer", "minimum": 1, "default": 60 },
+        "forbiddenPaths": { "type": "array", "items": { "type": "string" } },
+        "branchPrefix": { "type": "string", "default": "claude/deploy-monitor" },
+        "baseBranch": { "type": "string", "description": "Defaults to defaultBranch." },
+        "bodySections": { "type": "array", "items": { "type": "string" }, "description": "Headings the PR body must contain, from the repo's PR template." },
+        "coAuthor": { "type": "string", "description": "Co-Authored-By trailer value." },
+        "footer": { "type": "string", "default": "🤖 Generated with [Claude Code](https://claude.com/claude-code)" }
+      }
+    },
+    "routine": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Cloud routine settings used by the skill when it creates the routine.",
+      "properties": {
+        "name": { "type": "string" },
+        "model": { "type": "string", "default": "claude-sonnet-5-5" },
+        "cron": { "type": "string", "default": "0 5 * * *", "description": "Daily sweep, UTC. Minimum interval is one hour." },
+        "environmentId": { "type": "string", "description": "Cloud environment id (env_...). Asked for if missing." },
+        "allowedTools": { "type": "array", "items": { "type": "string" }, "default": ["Bash", "Read", "Write", "Edit", "Glob", "Grep"] },
+        "connectors": { "type": "array", "items": { "type": "string" }, "default": [], "description": "Names of claude.ai connectors to keep attached (e.g. Slack). Everything else is removed." }
+      }
+    }
+  }
+}

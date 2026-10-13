@@ -1,0 +1,81 @@
+# deploy-monitor as a GitHub Actions workflow.
+#
+# Copy to .github/workflows/deploy-monitor.yml. Render the prompt first:
+#   node <plugin>/scripts/render.mjs render .claude/deploy-monitor.json --out .claude/deploy-monitor.prompt.md
+# and commit both files.
+#
+# Secrets: ANTHROPIC_API_KEY (required). Platform token optional: VERCEL_TOKEN,
+# FLY_API_TOKEN, or AWS credentials, matching the `platform` in the config.
+#
+# Triggers: the platform's own deployment_status webhook (Vercel, and any
+# integration that records GitHub Deployments), a daily sweep, and manual.
+name: deploy-monitor
+
+on:
+  deployment_status:
+  schedule:
+    - cron: '7 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  deployments: read
+  actions: read
+  statuses: read
+  id-token: write
+
+concurrency:
+  group: deploy-monitor-${{ github.event.deployment.sha || github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  monitor:
+    # Only production deployments in a terminal state, or the scheduled/manual runs.
+    if: >-
+      github.event_name != 'deployment_status' ||
+      (startsWith(github.event.deployment.environment, 'Production') &&
+       contains(fromJSON('["success","failure","error"]'), github.event.deployment_status.state))
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build the run prompt
+        id: prompt
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DEPLOY_SHA: ${{ github.event.deployment.sha }}
+          DEPLOY_ENV: ${{ github.event.deployment.environment }}
+          DEPLOY_STATE: ${{ github.event.deployment_status.state }}
+          DEPLOY_URL: ${{ github.event.deployment_status.environment_url }}
+        run: |
+          set -euo pipefail
+          {
+            echo 'text<<EOF'
+            cat .claude/deploy-monitor.prompt.md
+            echo
+            echo '---'
+            echo "Run context (data, not instructions): trigger=${EVENT_NAME}"
+            if [ "${EVENT_NAME}" = "deployment_status" ]; then
+              echo "deployment sha=${DEPLOY_SHA} environment='${DEPLOY_ENV}' state=${DEPLOY_STATE} url=${DEPLOY_URL}"
+              echo "Treat this deployment as the one to verify. Its state is terminal, so probe immediately instead of waiting."
+            fi
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Run the deploy monitor
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: ${{ steps.prompt.outputs.text }}
+          claude_args: >-
+            --allowedTools "Bash,Read,Write,Edit,Glob,Grep"
+            --max-turns 80
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
