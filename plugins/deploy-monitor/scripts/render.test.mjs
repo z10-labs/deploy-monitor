@@ -116,6 +116,7 @@ test('acme example renders a complete, placeholder-free prompt', () => {
     '## 7. Final report',
   ]) assert.ok(out.includes(needle), `missing: ${needle}`);
   assert.ok(!/\n{3,}/.test(out), 'no triple blank lines');
+  assert.ok(!/\n\n   - `route-500`/.test(out), 'known failure list does not leave a blank line in the classification list');
 });
 
 test('generic platform without fix PRs renders the disabled wording and no Vercel text', () => {

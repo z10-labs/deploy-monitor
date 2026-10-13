@@ -67,7 +67,8 @@ Verdict per target: `ok` when every probe passed and CI is green; otherwise `fai
    - `boot-failed`: every route fails the same way{{platformBootSignature}}.{{#if knownFailureModes}} Known causes in this repo, check these first:
 {{#each knownFailureModes}}
      - {{this}}
-{{/each}}{{/if}}
+{{/each}}
+{{/if}}
    - `route-500`: the liveness probe passes but another probe fails.
    - `ci-red`: deploy healthy, CI on `{{defaultBranch}}` failed.
 {{#if contract}}
