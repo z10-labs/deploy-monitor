@@ -163,6 +163,63 @@ test('routineBody requires an environment id', () => {
   assert.equal(routineBody(minimal(), { environmentId: 'env_x' }).job_config.ccr.environment_id, 'env_x');
 });
 
+// --- notifications ----------------------------------------------------------
+
+test('validateConfig checks notifications', () => {
+  const cfg = minimal();
+  cfg.notifications = [
+    { type: 'pager' },
+    { type: 'discord', urlEnv: 'lowercase' },
+    { type: 'slack', events: ['always'] },
+    { type: 'teams', mentions: [1] },
+  ];
+  const errors = validateConfig(cfg);
+  assert.ok(errors.some((e) => e.includes('notifications[0].type')));
+  assert.ok(errors.some((e) => e.includes('notifications[1].urlEnv')));
+  assert.ok(errors.some((e) => e.includes('notifications[2].events')));
+  assert.ok(errors.some((e) => e.includes('notifications[3].mentions')));
+  cfg.notifications = [{ type: 'discord' }, { type: 'webhook', urlEnv: 'OPS_HOOK', events: ['ok'] }];
+  assert.deepEqual(validateConfig(cfg), []);
+});
+
+test('discord notification renders a webhook payload, env guard and no URL', () => {
+  const cfg = minimal();
+  cfg.notifications = [{ type: 'discord', mentions: ['<@&42>'], label: '#ops' }];
+  cfg.escalation = { pushNotification: false };
+  const out = renderPrompt(cfg);
+  assert.ok(out.includes('**c. Notify.**'));
+  assert.ok(out.includes('**Discord (#ops)**, URL in `DISCORD_WEBHOOK_URL`, events `fail`, `regression`.'));
+  assert.ok(out.includes('"content": "<@&42> <title:'));
+  assert.ok(out.includes('"color": 15548997'));
+  assert.ok(out.includes('Set `color` to 15548997 for fail, 5763719 for ok'));
+  assert.ok(out.includes('notification skipped: <URL_ENV> not set'));
+  assert.ok(out.includes('"value": "svc"'), 'service name in the embed');
+  assert.ok(!out.includes('https://discord.com/api/webhooks'), 'no URL ever rendered');
+  assert.ok(!out.includes('also send the `ok` notification'), 'no ok line when no channel subscribes to ok');
+});
+
+test('slack, teams and generic payloads render and ok subscriptions reach section 3', () => {
+  const cfg = minimal();
+  cfg.notifications = [
+    { type: 'slack', events: ['ok', 'fail'] },
+    { type: 'teams', urlEnv: 'OPS_TEAMS_URL' },
+    { type: 'webhook', events: ['ok', 'fail', 'regression'] },
+  ];
+  const out = renderPrompt(cfg);
+  assert.ok(out.includes('"type": "header"'), 'slack blocks');
+  assert.ok(out.includes('"contentType": "application/vnd.microsoft.card.adaptive"'), 'teams adaptive card');
+  assert.ok(out.includes('URL in `OPS_TEAMS_URL`'));
+  assert.ok(out.includes('"source": "deploy-monitor"'), 'generic event');
+  assert.ok(out.includes('also send the `ok` notification to Slack (env `SLACK_WEBHOOK_URL`), Generic webhook (env `NOTIFY_WEBHOOK_URL`)'));
+  assert.ok(!out.includes('{{'), 'json payloads do not break the template engine');
+});
+
+test('tutorspaces example posts failures to Discord', () => {
+  const out = renderPrompt(example());
+  assert.ok(out.includes('**Discord (#tutorspaces-deploys)**, URL in `DISCORD_WEBHOOK_URL`, events `fail`, `regression`.'));
+  assert.ok(out.includes('"value": "tutorspaces-api"'));
+});
+
 test('triggerBody matches the accepted webhook-trigger shape', () => {
   assert.deepEqual(triggerBody(example(), { routineTriggerId: 'trig_1' }), {
     routine_trigger_id: 'trig_1',

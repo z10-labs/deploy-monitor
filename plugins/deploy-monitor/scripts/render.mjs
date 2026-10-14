@@ -56,8 +56,17 @@ const METHODS = ['GET', 'POST', 'HEAD', 'PUT', 'DELETE'];
 const TOP_LEVEL_KEYS = new Set([
   '$schema', 'name', 'description', 'repository', 'defaultBranch', 'platform', 'platformScope',
   'deployModel', 'deploy', 'targets', 'build', 'ci', 'contract', 'repoRules', 'knownFailureModes',
-  'runbookLinks', 'escalation', 'fixPr', 'routine',
+  'runbookLinks', 'notifications', 'escalation', 'fixPr', 'routine',
 ]);
+
+const NOTIFICATION_TYPES = Object.freeze({
+  discord: { label: 'Discord', urlEnv: 'DISCORD_WEBHOOK_URL' },
+  slack: { label: 'Slack', urlEnv: 'SLACK_WEBHOOK_URL' },
+  teams: { label: 'Microsoft Teams', urlEnv: 'TEAMS_WEBHOOK_URL' },
+  webhook: { label: 'Generic webhook', urlEnv: 'NOTIFY_WEBHOOK_URL' },
+});
+const NOTIFY_EVENTS = ['ok', 'fail', 'regression'];
+const DEFAULT_NOTIFY_EVENTS = Object.freeze(['fail', 'regression']);
 
 // ---------------------------------------------------------------------------
 // Validation (mirrors schema/deploy-monitor.schema.json for the parts that matter)
@@ -86,6 +95,16 @@ export function validateConfig(cfg) {
     });
   });
   if (cfg.contract !== undefined && (typeof cfg.contract !== 'object' || typeof cfg.contract.path !== 'string')) push('"contract.path" is required when "contract" is set');
+  if (cfg.notifications !== undefined) {
+    if (!Array.isArray(cfg.notifications)) push('"notifications" must be an array');
+    else cfg.notifications.forEach((n, i) => {
+      const at = `notifications[${i}]`;
+      if (!NOTIFICATION_TYPES[n?.type]) push(`${at}.type must be one of ${Object.keys(NOTIFICATION_TYPES).join(', ')}`);
+      if (n?.urlEnv !== undefined && !/^[A-Z_][A-Z0-9_]*$/.test(n.urlEnv)) push(`${at}.urlEnv must be an environment variable name (UPPER_SNAKE_CASE)`);
+      if (n?.events !== undefined && (!Array.isArray(n.events) || n.events.length === 0 || !n.events.every((e) => NOTIFY_EVENTS.includes(e)))) push(`${at}.events must be a non-empty subset of ${NOTIFY_EVENTS.join(', ')}`);
+      if (n?.mentions !== undefined && (!Array.isArray(n.mentions) || !n.mentions.every((m) => typeof m === 'string'))) push(`${at}.mentions must be an array of strings`);
+    });
+  }
   if (cfg.fixPr?.maxFiles !== undefined && !(Number.isInteger(cfg.fixPr.maxFiles) && cfg.fixPr.maxFiles >= 1)) push('"fixPr.maxFiles" must be a positive integer');
   if (cfg.fixPr?.maxLines !== undefined && !(Number.isInteger(cfg.fixPr.maxLines) && cfg.fixPr.maxLines >= 1)) push('"fixPr.maxLines" must be a positive integer');
   if (cfg.routine?.cron !== undefined && cfg.routine.cron.trim().split(/\s+/).length !== 5) push('"routine.cron" must be a 5-field cron expression');
@@ -157,6 +176,117 @@ function platformProfile(cfg) {
 }
 
 // ---------------------------------------------------------------------------
+// Notifications: one incoming-webhook payload per channel type. Angle-bracket
+// placeholders are filled by the agent at run time; the URL comes from the
+// environment and is never rendered.
+// ---------------------------------------------------------------------------
+
+const PLACEHOLDERS = Object.freeze({
+  title: '<title: e.g. 🔴 Production deploy of <sha7> failed verification - <target>>',
+  summary: '<summary: symptom, classification, root cause with confidence, names only>',
+  links: 'PR: <pr_url>  Issue: <issue_url or n/a>  Run: <run_url>',
+});
+
+function notificationPayload(type, n, serviceName) {
+  const mention = (n.mentions ?? []).join(' ');
+  const username = n.username ?? 'deploy-monitor';
+  const lead = mention ? `${mention} ${PLACEHOLDERS.title}` : PLACEHOLDERS.title;
+  switch (type) {
+    case 'discord':
+      return {
+        username,
+        content: lead,
+        allowed_mentions: { parse: ['users', 'roles'] },
+        embeds: [{
+          title: PLACEHOLDERS.title,
+          url: '<issue_url or pr_url>',
+          description: PLACEHOLDERS.summary,
+          color: 15548997,
+          fields: [
+            { name: 'Service', value: serviceName, inline: true },
+            { name: 'Target', value: '<target>', inline: true },
+            { name: 'Commit', value: '<sha7>', inline: true },
+            { name: 'Classification', value: '<classification>', inline: true },
+            { name: 'Links', value: PLACEHOLDERS.links },
+          ],
+        }],
+      };
+    case 'slack':
+      return {
+        text: lead,
+        blocks: [
+          { type: 'header', text: { type: 'plain_text', text: PLACEHOLDERS.title } },
+          { type: 'section', text: { type: 'mrkdwn', text: PLACEHOLDERS.summary } },
+          { type: 'section', fields: [
+            { type: 'mrkdwn', text: `*Service*\n${serviceName}` },
+            { type: 'mrkdwn', text: '*Target*\n<target>' },
+            { type: 'mrkdwn', text: '*Commit*\n<sha7>' },
+            { type: 'mrkdwn', text: '*Classification*\n<classification>' },
+          ] },
+          { type: 'context', elements: [{ type: 'mrkdwn', text: PLACEHOLDERS.links }] },
+        ],
+      };
+    case 'teams':
+      return {
+        type: 'message',
+        attachments: [{
+          contentType: 'application/vnd.microsoft.card.adaptive',
+          content: {
+            $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
+            type: 'AdaptiveCard',
+            version: '1.4',
+            body: [
+              { type: 'TextBlock', text: lead, weight: 'Bolder', size: 'Medium', wrap: true },
+              { type: 'TextBlock', text: PLACEHOLDERS.summary, wrap: true },
+              { type: 'FactSet', facts: [
+                { title: 'Service', value: serviceName },
+                { title: 'Target', value: '<target>' },
+                { title: 'Commit', value: '<sha7>' },
+                { title: 'Classification', value: '<classification>' },
+              ] },
+            ],
+            actions: [
+              { type: 'Action.OpenUrl', title: 'Open issue', url: '<issue_url or pr_url>' },
+              { type: 'Action.OpenUrl', title: 'Open run', url: '<run_url>' },
+            ],
+          },
+        }],
+      };
+    default:
+      return {
+        source: 'deploy-monitor',
+        event: '<event: ok | fail | regression>',
+        service: serviceName,
+        target: '<target>',
+        sha: '<sha7>',
+        verdict: '<ok | fail>',
+        classification: '<classification or null>',
+        confidence: '<certain | likely | unclear | null>',
+        rootCause: '<one sentence, names only, or null>',
+        prUrl: '<pr_url>',
+        issueUrl: '<issue_url or null>',
+        fixPrUrl: '<fix_pr_url or null>',
+        runUrl: '<run_url>',
+        mentions: n.mentions ?? [],
+      };
+  }
+}
+
+function notificationView(n, serviceName) {
+  const base = NOTIFICATION_TYPES[n.type];
+  const events = n.events ?? [...DEFAULT_NOTIFY_EVENTS];
+  return {
+    ...n,
+    label: n.label ? `${base.label} (${n.label})` : base.label,
+    urlEnv: n.urlEnv ?? base.urlEnv,
+    events,
+    eventsText: events.map((e) => '`' + e + '`').join(', '),
+    colorNote: n.type === 'discord' ? ' Set `color` to 15548997 for fail, 5763719 for ok, 16705372 for regression.' : '',
+    payload: JSON.stringify(notificationPayload(n.type, n, serviceName), null, 2),
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Normalisation: config + defaults -> template view
 // ---------------------------------------------------------------------------
 
@@ -199,9 +329,14 @@ export function normalize(input) {
     };
   });
   const labels = cfg.escalation.labels.length ? cfg.escalation.labels : [...DEFAULTS.escalation.labels];
+  const notifications = (input.notifications ?? []).map((n) => notificationView(n, cfg.name));
+  const okNotifications = notifications.filter((n) => n.events.includes('ok'));
   return {
     ...cfg,
     targets,
+    notifications,
+    hasNotify: cfg.escalation.pushNotification || notifications.length > 0,
+    okNotificationsText: okNotifications.map((n) => `${n.label} (env \`${n.urlEnv}\`)`).join(', '),
     repositoryUrl: `https://github.com/${cfg.repository}`,
     deployModel: cfg.deployModel ?? profile.deployModel,
     ciWorkflow: cfg.ci.workflow,

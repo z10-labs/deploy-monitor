@@ -1,6 +1,6 @@
 {
   "name": "@z10-labs/deploy-monitor",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "private": true,
   "description": "Claude Code plugin marketplace: a deploy-verification routine that traces production failures back to the PR, raises them with the developer, and opens guarded draft fix PRs",
   "type": "module",

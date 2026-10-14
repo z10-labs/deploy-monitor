@@ -49,6 +49,9 @@
     "../tutorspacebrain/02-roadmap/rw-phase-07-cutover/runbook.md",
     "../tutorspacebrain/02-roadmap/rw-phase-07-cutover/env-inventory.md"
   ],
+  "notifications": [
+    { "type": "discord", "urlEnv": "DISCORD_WEBHOOK_URL", "events": ["fail", "regression"], "label": "#tutorspaces-deploys" }
+  ],
   "escalation": {
     "assignees": ["Dzithendo31"],
     "labels": ["deploy-monitor", "bug"],

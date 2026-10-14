@@ -34,6 +34,10 @@
     "A required environment variable missing in production makes the boot-time config check throw before the server listens."
   ],
   "runbookLinks": ["docs/runbook.md"],
+  "notifications": [
+    { "type": "discord", "urlEnv": "DISCORD_WEBHOOK_URL", "events": ["fail", "regression"], "mentions": ["<@&ROLE_ID>"], "label": "#deploys" },
+    { "type": "slack", "events": ["ok", "fail", "regression"] }
+  ],
   "escalation": {
     "assignees": [],
     "labels": ["deploy-monitor", "bug"],

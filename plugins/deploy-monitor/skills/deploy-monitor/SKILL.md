@@ -22,9 +22,10 @@ Create `.claude/deploy-monitor.json` for this repository. Do not guess; read the
 
 1. Discover: the GitHub `owner/repo` (`gh repo view --json nameWithOwner`), the default branch, the platform (look for `vercel.json`, `fly.toml`, `serverless.yml`, `template.yaml`, `.github/workflows/*deploy*`), production URLs (deploy config, README, `gh api repos/<repo>/deployments` environment URLs, `vercel ls`), health routes (grep for `health`, `/ready`, `/live`), the CI workflow name, any committed API contract (`openapi.json`, `schema.graphql`), the build/typecheck/test commands from `package.json` or `Makefile`, PR body requirements and protected paths from `CLAUDE.md` or `CONTRIBUTING.md`, and the collaborators (`gh api repos/<repo>/collaborators`).
 2. Draft the config from the example and the schema. One `targets[]` entry per deployed service. Every probe must prove the process booted: a liveness route with its expected JSON, or an authenticated route without credentials that returns 401/403. Put repo-specific crash causes you can see in the git history into `knownFailureModes`.
-3. Write the file, then validate it: `node "${CLAUDE_PLUGIN_ROOT}/scripts/render.mjs" validate .claude/deploy-monitor.json`.
-4. Probe each target once with `curl -sS -i --max-time 20` so the expected statuses in the config are real, and fix the config if they are not.
-5. Show the user the config and the rendered prompt summary (`render` below). Ask them to confirm assignees and the fix-PR guardrails before `create`.
+3. Ask where alerts should go besides GitHub: Discord, Slack, Teams, a generic webhook, or none. Add one `notifications[]` entry per channel with its `events` (default `fail` and `regression`; add `ok` if they want a green message per verified merge). The webhook URL is never written to the config; note the env var name (`urlEnv`, default `DISCORD_WEBHOOK_URL` etc.) so the user can set it in the cloud environment or as an Actions secret.
+4. Write the file, then validate it: `node "${CLAUDE_PLUGIN_ROOT}/scripts/render.mjs" validate .claude/deploy-monitor.json`.
+5. Probe each target once with `curl -sS -i --max-time 20` so the expected statuses in the config are real, and fix the config if they are not.
+6. Show the user the config and the rendered prompt summary (`render` below). Ask them to confirm assignees and the fix-PR guardrails before `create`.
 
 ## render
 
@@ -42,7 +43,7 @@ Creates the cloud routine on the user's claude.ai account. Routines are personal
 4. The server attaches every claude.ai connector by default. Immediately call `RemoteTrigger {action: "update", trigger_id, body: {"clear_mcp_connections": true}}`, then, if `routine.connectors` names any, re-add only those with `mcp_connections` (connector uuids come from the `/schedule` skill's connector list).
 5. Attach the merge trigger: run `trigger` below.
 6. Smoke test: `RemoteTrigger {action: "run", trigger_id}`, wait, then `list_runs` and `get_run_log`. Confirm the run reached section 7 of its report and that any comment or issue it posted contains names only, no secret values.
-7. Report: the routine URL `https://claude.ai/code/routines/<trigger_id>`, the schedule in the user's timezone, the trigger id, and what still needs the owner (platform token in the environment, trigger filter in the UI).
+7. Report: the routine URL `https://claude.ai/code/routines/<trigger_id>`, the schedule in the user's timezone, the trigger id, and what still needs the owner: the platform token and every notification `urlEnv` as variables on the cloud environment (https://claude.ai/code/environments), and the trigger filter in the UI. The smoke-test report says which notifications were skipped for a missing variable.
 
 ## trigger
 

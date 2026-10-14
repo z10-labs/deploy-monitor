@@ -13,7 +13,7 @@ Read `CLAUDE.md` at the repo root first if it exists; its rules bind you.{{#if r
 
 ## 0. Hard rules and tooling
 
-1. Secrets: print environment variable NAMES only, never values. Never paste tokens, connection strings or cookies into comments, issues, PRs or your report.
+1. Secrets: print environment variable NAMES only, never values. Never paste tokens, connection strings or cookies into comments, issues, PRs or your report. Notification webhook URLs are secrets too: read them from the environment variable named below, never echo them, and never put them in a file you commit.
 2. GitHub access: the sandbox's `GH_TOKEN` is a GitHub App installation token. `git` works, and `gh` works for some calls, but some REST endpoints (for example `/deployments`) answer 403 'Resource not accessible by integration'. When `gh` is refused, use the GitHub MCP tools instead: load them with ToolSearch (`select:mcp__github__list_commits,mcp__github__actions_list,mcp__github__list_issues,mcp__github__issue_write,mcp__github__add_issue_comment`, and search ToolSearch for 'pull request' and 'deployment' to find the PR and deployment tools). A PR is an issue for commenting purposes, so `mcp__github__add_issue_comment` posts on a PR. In a GitHub Actions run, `gh` is fully authenticated and the MCP tools may be absent; use `gh` then.
 3. Idempotency: before posting anything, search for your own marker. Every comment you post starts with an HTML marker `<!-- deploy-monitor:<sha7>:<verdict> -->` where sha7 is the deployed commit and verdict is `ok` or `fail`. If a comment with the same sha7 and verdict already exists on that PR, do not post again. Issues carry the label `{{primaryLabel}}` and a line `Fingerprint: <target>/<sha7>/<symptom-slug>`; search open issues with that label before opening one, and comment on the existing issue instead of opening a duplicate.
 4. Never merge or approve anything. Never force-push. Never delete branches. Never change platform settings or env (you only read them, names only).
@@ -53,6 +53,9 @@ Verdict per target: `ok` when every probe passed and CI is green; otherwise `fai
 - Merge-triggered run: post ONE short comment on the PR that produced the deployed sha (section 4 tells you how to find it): the marker, then a one-line 'Production deploy of `<sha7>` verified' and a small table with one row per probe (target, path, HTTP code) and the CI run link. Nothing else.
 {{else}}
 - Merge-triggered run: post nothing. Report the result in section 7 only.
+{{/if}}
+{{#if okNotificationsText}}
+- After a healthy merge-triggered run, also send the `ok` notification to {{okNotificationsText}} using the payloads in section 5c: the verified title, one line per probe, the green colour where the platform has one.
 {{/if}}
 - Scheduled run with nothing new since a prior `ok` marker for that sha7: post nothing, report 'no change'.
 - Scheduled run where a sha that was previously verified `ok` is now failing with NO newer commit on `{{defaultBranch}}`: treat as a regression without a deploy (env, database, upstream). Open or update an issue per section 5 with fingerprint symptom `regression-no-deploy`, and skip the PR comment.
@@ -116,9 +119,17 @@ Tracking issue: #<issue>  ·  Fix PR: #<pr> (or 'not opened - <reason>')
 ```
 
 **b. Open or update a GitHub issue** so it survives the PR thread: title `[deploy-monitor] Production <target> <sha7>: <symptom>`, labels `{{labelsText}}` (create the `{{primaryLabel}}` label with `gh label create {{primaryLabel}} --color BFD4F2 --description "Opened by the deploy monitor routine"` if missing; if label creation is refused, use the remaining labels and put `deploy-monitor` in the title), assignee{{#if assigneesText}}s {{assigneesText}}{{else}} = the PR author{{/if}}, body = the same content as the comment plus `Fingerprint: <target>/<sha7>/<symptom-slug>` and links to the deployment, the PR and the CI run. If an open issue with the same fingerprint exists, add a comment with the new evidence instead.
-{{#if escalation.pushNotification}}
+{{#if hasNotify}}
 
-**c. Notify.** If a `PushNotification` tool is available (cloud routines), send one short message naming the target, the sha7, the classification and the issue number.
+**c. Notify.**{{#if escalation.pushNotification}} If a `PushNotification` tool is available (cloud routines), send one short message naming the target, the sha7, the classification and the issue number.{{/if}}{{#if notifications}} Then post to each channel below whose events include the outcome of this run: `fail` for a failed deploy, `regression` for the regression-without-deploy case, `ok` for a verified merge (section 3). For each channel: if the environment variable is set, write the JSON below to a scratch file with every angle-bracket placeholder filled (names only, no secrets), then `curl -fsS -X POST "$<URL_ENV>" -H 'content-type: application/json' --data @payload.json`. If the variable is unset, do not fail the run; write 'notification skipped: <URL_ENV> not set' in the report. Never print the URL. One post per channel per run.{{/if}}
+{{#each notifications}}
+
+- **{{label}}**, URL in `{{urlEnv}}`, events {{eventsText}}.{{colorNote}}
+
+```json
+{{payload}}
+```
+{{/each}}
 {{/if}}
 {{#if fixPr.enabled}}
 

@@ -79,3 +79,9 @@ jobs:
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          # Notification webhooks: one secret per channel in .claude/deploy-monitor.json
+          # (the `urlEnv` of each entry). Unset secrets are skipped, not errors.
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
+          NOTIFY_WEBHOOK_URL: ${{ secrets.NOTIFY_WEBHOOK_URL }}

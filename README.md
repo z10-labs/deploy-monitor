@@ -30,6 +30,7 @@ The monitor is a **prompt rendered from a config**. The procedure is generic and
 | `platform` | `vercel`, `fly`, `aws-lambda` or `generic`: which headers mean a crash, which CLI reads build and runtime logs, which token env var to look for |
 | `build`, `ci`, `contract` | How to build and test locally, which workflow must be green, which committed API contract to diff |
 | `knownFailureModes`, `runbookLinks`, `repoRules` | Repo memory the classifier checks first, where fixes point, rules from your `CLAUDE.md` |
+| `notifications[]` | Chat channels: Discord, Slack, Teams or a generic webhook, each with its own events and the env var holding its webhook URL |
 | `escalation` | Assignees, labels, whether to mention the author, push a mobile notification, or post a success comment |
 | `fixPr` | The draft-PR gate: max files and lines, forbidden paths, branch prefix, required PR body sections, co-author trailer |
 | `routine` | Model, daily cron (UTC), cloud environment, allowed tools, which connectors to keep |
@@ -50,6 +51,35 @@ The rendered prompt runs as a **Claude Code cloud routine** with two triggers: a
 - **The GitHub trigger filter is not settable through the API yet.** The trigger fires on `pull_request.closed`; set "base branch = main, merged = true" in the routine's web UI. The prompt is idempotent, so a stray fire costs a run, not a duplicate comment.
 - **Sandbox GitHub access** is a GitHub App token: some REST endpoints (deployments) answer 403, so the prompt falls back to the GitHub MCP tools. In GitHub Actions the token is complete.
 - **Platform logs** need a token in the cloud environment (`VERCEL_TOKEN`, `FLY_API_TOKEN`, AWS credentials). Without one the routine still works but reports causes as "likely" rather than "certain".
+
+## Notifications: Discord, Slack, Teams, anything with a webhook
+
+Every run reports to GitHub (a marked comment on the PR, an issue per fingerprint). Chat channels are added in the config and all work the same way: an incoming-webhook URL, read from an environment variable at run time, posted to with `curl`. The URL is the secret, so it never appears in the config, the prompt, or a comment.
+
+```json
+"notifications": [
+  { "type": "discord", "events": ["fail", "regression"], "mentions": ["<@&ROLE_ID>"], "label": "#deploys" },
+  { "type": "slack",   "events": ["ok", "fail", "regression"] },
+  { "type": "teams",   "urlEnv": "OPS_TEAMS_URL" },
+  { "type": "webhook", "events": ["fail"] }
+]
+```
+
+| Type | Default env var | Payload |
+| :- | :- | :- |
+| `discord` | `DISCORD_WEBHOOK_URL` | `content` with mentions plus one embed (title, summary, service, target, commit, classification, links); red, green or amber colour by event |
+| `slack` | `SLACK_WEBHOOK_URL` | Block Kit: header, summary, four fields, a context line with links |
+| `teams` | `TEAMS_WEBHOOK_URL` | Adaptive Card 1.4 with a FactSet and Open-issue / Open-run actions (Workflows-style incoming webhook) |
+| `webhook` | `NOTIFY_WEBHOOK_URL` | A flat JSON event: `event`, `service`, `target`, `sha`, `verdict`, `classification`, `confidence`, `rootCause`, `prUrl`, `issueUrl`, `fixPrUrl`, `runUrl`, `mentions`. Point n8n, PagerDuty, Opsgenie or your own service at it |
+
+`events` picks what each channel hears: `fail` (a failed deploy), `regression` (a previously verified deploy now failing with no new commit), `ok` (a verified merge). Default is `fail` and `regression`. An unset variable is reported as "notification skipped", never an error, so a config can list channels before every environment has the secret.
+
+Where to put the URL:
+
+- **Cloud routine**: the environment's variables at [claude.ai/code/environments](https://claude.ai/code/environments) (or a network secret on Pro and Max). Discord: Server Settings → Integrations → Webhooks → New Webhook → Copy URL.
+- **GitHub Actions**: a repository secret with the same name; the workflow template already passes the four defaults through.
+
+Mentions use the platform's own syntax (`<@&ROLE_ID>` for a Discord role, `<@U0123>` for a Slack user). Adding a new chat platform is one `case` in `notificationPayload` in `scripts/render.mjs`, one enum value in the schema, and one test.
 
 ## GitHub Actions variant
 
