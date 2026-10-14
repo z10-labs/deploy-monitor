@@ -11,7 +11,7 @@
       "name": "deploy-monitor",
       "source": "./plugins/deploy-monitor",
       "description": "Cloud routine that verifies every production deploy, traces failures to the PR and its authors, comments, opens an assigned issue, and opens a guarded draft fix PR. Config-driven per repo; Vercel, Fly, AWS Lambda and generic profiles; GitHub Actions variant included.",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "author": { "name": "Z10 Labs", "url": "https://github.com/z10-labs" },
       "homepage": "https://github.com/z10-labs/deploy-monitor",
       "repository": "https://github.com/z10-labs/deploy-monitor",
