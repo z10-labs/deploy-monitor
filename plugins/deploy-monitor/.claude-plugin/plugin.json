@@ -1,7 +1,7 @@
 {
   "name": "deploy-monitor",
   "displayName": "Deploy Monitor",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Config-driven production deploy verification as a Claude Code cloud routine or GitHub Action: probes, traces failures to the PR, raises them with the developer, opens guarded draft fix PRs.",
   "author": { "name": "Z10 Labs", "url": "https://github.com/z10-labs" },
   "homepage": "https://github.com/z10-labs/deploy-monitor",
