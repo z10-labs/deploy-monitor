@@ -49,6 +49,9 @@
     "docs/runbooks/deploy.md",
     "docs/runbooks/env-inventory.md"
   ],
+  "notifications": [
+    { "type": "discord", "urlEnv": "DISCORD_WEBHOOK_URL", "events": ["fail", "regression"], "label": "#acme-deploys" }
+  ],
   "escalation": {
     "assignees": ["octocat"],
     "labels": ["deploy-monitor", "bug"],

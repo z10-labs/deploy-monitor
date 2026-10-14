@@ -98,6 +98,23 @@
     "repoRules": { "type": "string", "description": "Rules from the repo's CLAUDE.md the agent must obey, in one or two sentences." },
     "knownFailureModes": { "type": "array", "items": { "type": "string" }, "description": "Repo-specific causes seen before, one line each; the classifier checks them first." },
     "runbookLinks": { "type": "array", "items": { "type": "string" }, "description": "Paths or URLs the suggested fix should point to." },
+    "notifications": {
+      "type": "array",
+      "description": "Chat channels to post to, each through an incoming-webhook URL read from an environment variable at run time. The URL is a secret: set it in the cloud environment or as an Actions secret, never here.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["type"],
+        "properties": {
+          "type": { "type": "string", "enum": ["discord", "slack", "teams", "webhook"], "description": "discord: Discord webhook (content + embed). slack: Slack incoming webhook (blocks). teams: Teams incoming webhook / Workflows (Adaptive Card). webhook: a flat JSON event for anything else (n8n, PagerDuty, your own service)." },
+          "urlEnv": { "type": "string", "pattern": "^[A-Z_][A-Z0-9_]*$", "description": "Environment variable holding the webhook URL. Defaults: DISCORD_WEBHOOK_URL, SLACK_WEBHOOK_URL, TEAMS_WEBHOOK_URL, NOTIFY_WEBHOOK_URL." },
+          "events": { "type": "array", "items": { "type": "string", "enum": ["ok", "fail", "regression"] }, "default": ["fail", "regression"], "description": "ok: a verified merge. fail: a failed deploy. regression: a previously verified deploy now failing with no new commit." },
+          "mentions": { "type": "array", "items": { "type": "string" }, "description": "Mention tokens prepended to the message, in the platform's syntax: Discord <@USER_ID> or <@&ROLE_ID>, Slack <@U0123> or <!subteam^S0123>." },
+          "username": { "type": "string", "description": "Display name for the webhook post where the platform supports it. Default deploy-monitor." },
+          "label": { "type": "string", "description": "Shown in the report, e.g. '#ops-alerts'." }
+        }
+      }
+    },
     "escalation": {
       "type": "object",
       "additionalProperties": false,
