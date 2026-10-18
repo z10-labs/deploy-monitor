@@ -2,14 +2,16 @@
 
 A Claude Code plugin that watches your production deploys. After every merge it probes the live service, and when something is wrong it works out which PR did it, who worked on it (humans and agents), posts the diagnosis on that PR, opens an assigned issue with a hand-off prompt, and, only when the cause is small and certain, opens a draft fix PR. It never merges, never touches platform settings, and never prints a secret.
 
-This repository is also the Z10 Labs plugin marketplace.
+It is listed in the Z10 Labs plugin marketplace, [z10-labs/plugins](https://github.com/z10-labs/plugins).
 
 ## Install
 
 ```bash
-claude plugin marketplace add z10-labs/deploy-monitor
+claude plugin marketplace add z10-labs/plugins
 claude plugin install deploy-monitor@z10-labs
 ```
+
+If you added the marketplace earlier from `z10-labs/deploy-monitor`, run the `marketplace add` line above once: the `z10-labs` marketplace is repointed in place and the plugin stays installed. If it is refused because a `settings.json` declares `z10-labs` under `extraKnownMarketplaces`, change that entry's `repo` to `z10-labs/plugins` and run it again. The old catalogue in this repository, [.claude-plugin/marketplace.json](.claude-plugin/marketplace.json), is kept for now so existing installs keep working, and will be removed once they have moved.
 
 Then, inside a Claude Code session in the repository you want monitored:
 
