@@ -11,7 +11,7 @@ claude plugin marketplace add z10-labs/plugins
 claude plugin install deploy-monitor@z10-labs
 ```
 
-If you added the marketplace earlier from `z10-labs/deploy-monitor`, run the `marketplace add` line above once: the `z10-labs` marketplace is repointed in place and the plugin stays installed. The old catalogue in this repository, [.claude-plugin/marketplace.json](.claude-plugin/marketplace.json), is kept for now so existing installs keep working, and will be removed once they have moved.
+If you added the marketplace earlier from `z10-labs/deploy-monitor`, run the `marketplace add` line above once: the `z10-labs` marketplace is repointed in place and the plugin stays installed. If it is refused because a `settings.json` declares `z10-labs` under `extraKnownMarketplaces`, change that entry's `repo` to `z10-labs/plugins` and run it again. The old catalogue in this repository, [.claude-plugin/marketplace.json](.claude-plugin/marketplace.json), is kept for now so existing installs keep working, and will be removed once they have moved.
 
 Then, inside a Claude Code session in the repository you want monitored:
 
